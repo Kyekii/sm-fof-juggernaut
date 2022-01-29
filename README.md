@@ -10,7 +10,7 @@ In this gamemode, the humans must eliminate the Juggernaut, a randomly chosen pl
 * [SteamWorks extension](https://users.alliedmods.net/~kyles/builds/SteamWorks/) (to change server's gamemode in server browser)
 
 ## Installation
-Be sure you have properly installed SourceMod and that your server is functioning with it enabled. If you are unsure on how to install SourceMod or custom plugins, refer to the [AlliedModders wiki page](https://wiki.alliedmods.net/Installing_SourceMod) for more detail.
+Be sure you have properly installed SourceMod and that your server is functioning with it enabled. If you are unsure on how to install SourceMod or custom plugins, refer to the [AlliedModders wiki page](https://wiki.alliedmods.net/Installing_SourceMod) for more detail. Once you've verified this, install the SteamWorks extension from the above link.
 
 To install, extract the latest release in your SourceMod's addons folder. If compiling manually, be sure to include both SteamWorks and smlib in your scripting/include folder.
 
