@@ -3,6 +3,8 @@ Juggernaut gamemode for Fistful of Frags
 
 ![gif](https://thumbs.gfycat.com/InfamousEllipticalEarwig-size_restricted.gif)
 
+In this gamemode, the humans must eliminate the Juggernaut, a randomly chosen player that takes significantly less damage from attacks, before the round time runs out. Players are given random weapons and portable whiskey in order to achieve this goal.
+
 ## Requirements
 * [SourceMod](https://www.sourcemod.net/) version 1.10 or later
 * [SteamWorks extension](https://users.alliedmods.net/~kyles/builds/SteamWorks/) (to change server's gamemode in server browser)
@@ -27,7 +29,7 @@ This gamemode can support up to 24 players (Teamplay mode's max), but for balanc
 | `jm_random` | bool | 0-1 | 0 | Whether the chosen Juggernaut is pure random, or randomly permutated. (everyone gets to be Juggernaut at least once) 1 = pure random. |
 | `jm_ratio_dynamic` | bool | 0-1 | 1 | Turns on or off scaling damage reduction for the Juggernaut based on player count. | 
 | `jm_ratio_override` | float | 0-1 | 0.25 | Static rate of the Juggernaut's damage reduction if jm_ratio_dynamic is set to 0. | 
-| `jm_round_time` | int | 0-999 | 120 | How many seconds humans have to live in a round. | 
+| `jm_round_time` | int | 0-999 | 180 | How many seconds humans have to live in a round. | 
 | `jm_speed` | float | 0-999 | 150.0 | Movement speed, in Hammer units/second, that the Juggernaut will start with. |
 
 ### Commands (admin only)
