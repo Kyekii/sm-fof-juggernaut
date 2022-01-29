@@ -1,0 +1,94 @@
+// These are the tables that Juggernaut uses to determine weapon spawns. If you want to change them, remember to order the weapons from greatest weight to least or it won't work properly.
+
+juggernaut_mode
+{
+	"loot"
+	{
+		nothing	{ weight 50 }
+
+		weapon_axe { weight 12 }
+
+		weapon_sawedoff_shotgun { weight 11 }
+        weapon_coltnavy { weight 11 }
+        weapon_volcanic { weight 11 }
+		
+		weapon_remington_army { weight 10 }
+		
+		weapon_bow { weight 9 }
+		
+		weapon_schofield { weight 8 }
+		
+        weapon_deringer { weight 6 }
+        weapon_hammerless { weight 6 }
+		weapon_maresleg { weight 6 }
+		weapon_coachgun { weight 6 }
+		weapon_machete { weight 6 }
+
+		weapon_peacemaker { weight 4 }
+		weapon_walker { weight 4 }
+
+        weapon_spencer { weight 2 }
+		weapon_carbine { weight 2 }
+        weapon_whiskey { weight 2 }
+
+        weapon_shotgun { weight 1 }
+		weapon_henryrifle { weight 1 }
+        weapon_sharps { weight 1 }
+	}
+
+    "gear_primary"
+    {
+        weapon_sawedoff_shotgun { weight 14 }
+
+        weapon_volcanic { weight 12 }
+
+        weapon_coltnavy { weight 10 }
+		weapon_remington_army { weight 10 }
+		
+        weapon_schofield { weight 8 }
+		
+		weapon_maresleg { weight 6 }
+        
+		weapon_hammerless { weight 4 }
+		weapon_bow { weight 4 }
+		weapon_peacemaker { weight 4 }
+
+        weapon_henryrifle { weight 1 }
+        weapon_coachgun { weight 1 }
+        weapon_spencer { weight 1 }
+    }
+
+    "gear_secondary"
+    {
+		weapon_volcanic { weight 8 }
+		weapon_sawedoff_shotgun { weight 8 }
+	
+		weapon_knife { weight 4 }
+		weapon_hammerless { weight 4 }
+		weapon_axe { weight 4 }
+		
+		weapon_deringer { weight 2 }
+		weapon_machete { weight 2 }
+    }
+	
+	"juggernaut_primary"
+	{
+		weapon_remington_army { weight 25 }
+	
+		weapon_schofield { weight 21 }
+		
+		weapon_walker { weight 2 }
+		
+		weapon_carbine { weight 1 }
+		weapon_sharps { weight 1 }
+	}
+	
+	"juggernaut_secondary"
+	{
+		weapon_coltnavy { weight 12 }
+		weapon_remington_army { weight 12 }
+		
+		weapon_schofield { weight 8 }
+		weapon_volcanic { weight 8 }
+	}
+}
