@@ -40,7 +40,7 @@ This gamemode can support up to 24 players (Teamplay mode's max), but for balanc
 [GNU General Public License v3.0](https://choosealicense.com/licenses/gpl-3.0/)
 
 ## Credits
-This gamemode is derived from [CrimsonTautology's Fistful of Zombies mode,](https://github.com/CrimsonTautology/sm-fistful-of-zombie) which is licensed under GPL-3.0.
+This gamemode is derived from [CrimsonTautology's Fistful of Zombies mode,](https://github.com/CrimsonTautology/sm-fistful-of-zombies) which is licensed under GPL-3.0.
 
 Special thanks to the following players for playtesting, discovering bugs, and offering feedback:  
 Spunty  
