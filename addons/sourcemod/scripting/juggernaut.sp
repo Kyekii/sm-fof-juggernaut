@@ -37,11 +37,13 @@ ConVar g_MedicRatio;
 ConVar g_JuggernautSpeed;
 ConVar g_JuggernautRage;
 ConVar g_JuggernautPicker;
+ConVar g_BeaconTime;
+
+Handle h_DeathBeacon;
 
 ConVar g_TeambalanceAllowedCvar;
 ConVar g_TeamsUnbalanceLimitCvar;
 ConVar g_AutoteambalanceCvar;
-ConVar g_PermaDeath;
 
 KeyValues g_GearPrimaryTable;
 int g_GearPrimaryTotalWeight;
@@ -55,16 +57,23 @@ KeyValues g_LootTable;
 int g_LootTotalWeight;
 
 bool AlreadyMedic[MAXPLAYERS+1] = {false, ...};
+bool JuggernautBeacon = false;
 int AlreadyJuggernaut[MAXPLAYERS+1] = {0, ...};
 int AlreadyJuggernautIndex = 0;
 int DisconnectCount;
+int DeathTime;
 
 bool GameLive = false;
+bool InGrace = false;
 
 bool g_AutoSetGameDescription = false;
 int g_VigilanteModelIndex;
 int g_BandidoModelIndex;
 int CurrentJuggernautId;
+
+int g_BeamSprite = -1;
+int g_HaloSprite = -1;
+
 int g_TeamplayEntity = INVALID_ENT_REFERENCE;
 
 public Plugin myinfo =
@@ -72,13 +81,14 @@ public Plugin myinfo =
 	name = "Juggernaut",
 	author = "Kyeki",
 	description = "Juggernaut gamemode for Fistful of Frags",
-	version = "1.0",
+	version = "1.1",
 	url = "https://github.com/Kyekii/sm-fof-juggernaut"
 };
 
 public void OnPluginStart()
 {
 	g_isEnabledCvar = CreateConVar("jm_enabled", "1", "Whether Juggernaut Mode is on or not.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_BeaconTime = CreateConVar("jm_beacontime", "30", "Time it takes from the round starts until the Juggernaut's beacon is enabled.", FCVAR_NOTIFY, true, 0.0); 
 	g_CfgCvar = CreateConVar("jm_config", "configs/juggernaut_cfg.txt", "Location of the Juggernaut config file.", 0);
 	g_MedicRatio = CreateConVar("jm_medics", "0.50", "Percentage of players on the human side that will receive whiskey along with their weapons.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_JuggernautRage = CreateConVar("jm_rage", "1", "Whether the Juggernaut's speed will scale with health.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
@@ -89,34 +99,149 @@ public void OnPluginStart()
 	g_JuggernautSpeed = CreateConVar("jm_speed", "150.0", "Movement speed, in Hammer units/second, that the Juggernaut will spawn with.", FCVAR_NOTIFY, true, 0.0, false);
 	
 	RegAdminCmd("jm_reload", Command_Reload, ADMFLAG_CONFIG, "Force a reload of the Juggernaut config file.");
+	RegAdminCmd("jm_dump", Command_Dump, ADMFLAG_CONFIG, "Dump the Juggernaut array and other miscellaneous debug information.");
 	
 	g_TeambalanceAllowedCvar = FindConVar("fof_sv_teambalance_allowed");
 	g_TeamsUnbalanceLimitCvar = FindConVar("mp_teams_unbalance_limit");
 	g_AutoteambalanceCvar = FindConVar("mp_autoteambalance");
-	g_PermaDeath = FindConVar("fof_sv_force_spect");
 	
 	HookEvent("round_start", Event_RoundStart);
+	HookEvent("round_end", Event_RoundEnd);
 	HookEvent("player_activate", Event_Announce);
+	HookEvent("player_spawn", Event_Spawn);
 	HookEvent("player_disconnect", Event_Disconnect);
+	HookEvent("player_death", Event_Death);
 	
 	AddNormalSoundHook(SoundReplace);
+}
+
+Action Command_Dump(int caller, int args)
+{
+	for (new p = 1; p <= MaxClients; p++)
+	{
+		if (IsClientInGame(p) && AlreadyMedic[p] == true)
+		{
+			PrintToServer("[JUGGERNAUT DUMP - %.3f] AlreadyMedics: %i - %N", GetGameTime(), p, p);
+		}
+		else continue;
+	}
 	
-	GameLive = false;
+	int juggernaut = GetClientOfUserId(CurrentJuggernautId)
+	if (juggernaut != 0)
+	{
+		PrintToServer("[JUGGERNAUT DUMP - %.3f] Current juggernaut: %i - %N", GetGameTime(), juggernaut, juggernaut);
+	}
+
+	for (new i = 1; i <= MaxClients; i++)
+	{
+		int tmp = GetClientOfUserId(AlreadyJuggernaut[i]);
+		if (AlreadyJuggernaut[i] == 0)
+		{
+			continue;
+		}
+		else if (IsClientInGame(tmp))
+		{
+			PrintToServer("[JUGGERNAUT DUMP - %.3f] AlreadyJuggernaut: id %i, index %i - %N", GetGameTime(), AlreadyJuggernaut[i], tmp, tmp);
+		}
+		else 
+		{
+			PrintToServer("[JUGGERNAUT DUMP - %.3f] AlreadyJuggernaut: id %i - not in game", GetGameTime(), AlreadyJuggernaut[i]);
+		}
+	}
+	
+	return Plugin_Handled;
+}
+
+void Event_RoundEnd(Event event, const char[] name, bool dontBroadcast)
+{
+	if (!isEnabled()) return;
+
+	InGrace = true;
+	CloseHandle(h_DeathBeacon)
+}
+
+Action Timer_Beacon(Handle timer)
+{
+	if (JuggernautBeacon == false) return Plugin_Stop;
+	int client = GetClientOfUserId(CurrentJuggernautId);
+	if (client == 0) return Plugin_Stop;
+	float origin[3];
+	int redColor[4] = {255, 75, 75, 255};
+	
+	GetClientAbsOrigin(client, origin);
+	origin[2] += 10;
+	TE_SetupBeamRingPoint(origin, 10.0, 250.0, g_BeamSprite, g_HaloSprite, 0, 10, 0.6, 10.0, 0.5, redColor, 10, 0);
+	TE_SendToAll();
+	
+	GetClientEyePosition(client, origin);
+	EmitAmbientSound("common/buy_tick.wav", origin, client, SNDLEVEL_RAIDSIREN);	
+	
+	return Plugin_Handled;
+}
+
+Action Timer_DeathBeacon(Handle timer)
+{
+	if (!isEnabled()) return Plugin_Continue;
+	if (JuggernautBeacon == true) return Plugin_Continue;
+	int client = GetClientOfUserId(CurrentJuggernautId);
+	int time = GetConVarInt(g_BeaconTime);
+	if (client == 0) return Plugin_Continue;
+	
+	if (DeathTime < time)
+	{
+		DeathTime++;
+	}
+	
+	if (DeathTime == time)
+	{
+		JuggernautBeacon = true;
+		CreateTimer(1.0, Timer_Beacon, .flags = TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+		PrintToChatAll("%i seconds has passed without deaths. The Juggernaut's beacon has been enabled!", time);
+		return Plugin_Handled;
+	}
+	return Plugin_Handled;
+}
+
+void Event_Death(Event event, const char[] name, bool dontBroadcast)
+{
+	if (!isEnabled()) return;
+	
+	int client = GetClientOfUserId(CurrentJuggernautId);
+	DeathTime = 0;
+	
+	if (JuggernautBeacon == true)
+	{
+		JuggernautBeacon = false;
+		SetEntityRenderColor(client, 255, 255, 255, 255);
+		PrintToChatAll("The Juggernaut's beacon has been disabled.");
+	}
 }
 
 void Event_Disconnect(Event event, const char[] name, bool dontBroadcast)
 {
 	if (!isEnabled()) return;
 	if (!GameLive) return;
-		
+	
 	DisconnectCount++; // this is to ensure that any players that leave during warmup aren't counted as part of the disconnect count
+}
+
+void Event_Spawn(Event event, const char[] name, bool dontBroadcast)
+{
+	if (!isEnabled()) return;
+	int userid = GetEventInt(event, "userid");
+	int client = GetClientOfUserId(userid);
+	if ((!InGrace && GameLive) || IsFakeClient(client))
+	{
+		SDKHooks_TakeDamage(client, client, client, 999.0);
+		ChangeClientTeam(client, TEAM_HUMAN);
+	}
 }
 
 void Event_Announce(Event event, const char[] name, bool dontBroadcast)
 {
 	if (!isEnabled()) return;
-	int iuserid = GetEventInt(event, "userid");
-	CreateTimer(5.0, Timer_Disclaimer, iuserid, TIMER_FLAG_NO_MAPCHANGE);
+	int userid = GetEventInt(event, "userid");
+	CreateTimer(3.0, Timer_Disclaimer, userid, TIMER_FLAG_NO_MAPCHANGE);
 }
 
 Action Timer_GivePrimaryWeapon(Handle timer, int userid)
@@ -169,8 +294,8 @@ Action Timer_GiveSecondaryWeapon(Handle timer, int userid)
 void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
 {
 	if (!isEnabled()) return;
-	
-	GameLive = true;
+
+	InGrace = true;
 	if (GetConVarBool(g_JuggernautPicker) == false)
 	{
 		PickJuggernaut();
@@ -186,6 +311,7 @@ void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
 		{
 			int userid = GetClientUserId(i);
 			SetEntPropFloat(i, Prop_Data, "m_flLaggedMovementValue", 0.0);
+			SetEntityRenderColor(i, 255, 255, 255, 255);
 			CreateTimer(0.2, Timer_GiveSecondaryWeapon, userid, TIMER_FLAG_NO_MAPCHANGE);
 			CreateTimer(0.4, Timer_GivePrimaryWeapon, userid, TIMER_FLAG_NO_MAPCHANGE);
 			
@@ -211,13 +337,24 @@ void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
 	g_TeambalanceAllowedCvar.SetInt(0, false, false);
 	g_TeamsUnbalanceLimitCvar.SetInt(0, false, false);
 	g_AutoteambalanceCvar.SetInt(0, false, false);
-	g_PermaDeath.SetInt(1, false, false);
 
 	Entity_KillAllByClassName("fof_crate");
 	Entity_KillAllByClassName("fof_crate_low");
 	Entity_KillAllByClassName("fof_crate_med");
 	Entity_KillAllByClassName("fof_buyzone");
+	
+	JuggernautBeacon = false;
+	DeathTime = 0;
+	h_DeathBeacon = CreateTimer(1.0, Timer_DeathBeacon, .flags = TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 	CreateTimer(2.0, Timer_Repeat, .flags = TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+	CreateTimer(2.0, Timer_Grace, .flags = TIMER_FLAG_NO_MAPCHANGE);
+	GameLive = true;
+}
+
+Action Timer_Grace(Handle timer)
+{
+	InGrace = false;
+	return Plugin_Handled;
 }
 
 Action Command_Reload(int caller, int args)
@@ -417,11 +554,13 @@ public isEnabled()
 
 bool isHuman(int client)
 {
+	if (client == 0) return false;
 	return GetClientTeam(client) == TEAM_HUMAN;
 }
 
 bool isJuggernaut(int client)
 {
+	if (client == 0) return false;
 	return GetClientTeam(client) == TEAM_JUGGERNAUT;
 }
 
@@ -450,7 +589,7 @@ void PickMedics()
 		
 		if (IsClientInGame(random))
 		{ 
-			while (((AlreadyMedic[random] == true)) || (random == JuggernautClient) || (!IsClientInGame(random)))
+			while (((AlreadyMedic[random] == true)) || (random == JuggernautClient) || (!IsClientInGame(random)) || (!IsClientConnected(random)))
 			{
 				random = GetRandomInt(1, PlayerCount);	
 				int overflow;
@@ -465,7 +604,7 @@ void PickMedics()
 	}
 }
 
-Action:Timer_Disclaimer(Handle timer, int iuserid)
+Action Timer_Disclaimer(Handle timer, int iuserid)
 {
 	int client = GetClientOfUserId(iuserid);
 	if (client > 0 && IsClientInGame(client))
@@ -526,7 +665,7 @@ void PickJuggernaut_Legacy()
 	}
 	
 	chosen = GetRandomInt(1, client_count);  
-	while (!IsClientInGame(chosen))
+	while (!IsClientInGame(chosen) || !IsClientConnected(chosen))
 	{
 		PrintToServer("[JUGGERNAUT - %.3f] Rerolling juggernaut", GetGameTime());
 		chosen = GetRandomInt(1, client_count);  
@@ -568,7 +707,7 @@ void PickJuggernaut()
 	}
 
 	chosen = GetRandomInt(1, MaxClients); 
-	while ((CheckJuggernaut(chosen) == 1) || !IsClientInGame(chosen))
+	while ((CheckJuggernaut(chosen) == 1) || !IsClientInGame(chosen) || !IsClientConnected(chosen))
 	{
 		PrintToServer("[JUGGERNAUT - %.3f] Rerolling juggernaut", GetGameTime());
 		chosen = GetRandomInt(1, MaxClients);
@@ -599,9 +738,9 @@ void PickJuggernaut()
 	for (new p = 0; p < MAXPLAYERS+1; p++)
 	{
 		if (AlreadyJuggernaut[p] == 0) continue;
-			
+		PrintToServer("[JUGGERNAUT DEBUG] Overflow %i, DisconnectCount %i, client_count %i, AlreadyJuggernautIndex %i", overflow, DisconnectCount, client_count, AlreadyJuggernautIndex);	
 		overflow++;
-		if (overflow - DisconnectCount >= client_count || AlreadyJuggernautIndex - DisconnectCount <= 0)
+		if (overflow - DisconnectCount >= client_count || AlreadyJuggernautIndex - DisconnectCount <= 0 || AlreadyJuggernautIndex - DisconnectCount >= client_count)
 		{
 			ClearJuggernauts();
 			PrintToServer("[JUGGERNAUT - %.3f] Clearing juggernaut array", GetGameTime());
@@ -641,12 +780,17 @@ public void OnMapStart()
 {
 	if (!isEnabled()) return;
 	
-	char tmp[256];
+	char tmp[PLATFORM_MAX_PATH];
 	
+	GameLive = false;
 	ClearJuggernauts();
 	//precache gamemode materials
 	g_VigilanteModelIndex = PrecacheModel("models/playermodels/player1.mdl");
 	g_BandidoModelIndex = PrecacheModel("models/playermodels/bandito.mdl");
+	g_BeamSprite = PrecacheModel("sprites/laser.vmt");
+	g_HaloSprite = PrecacheModel("sprites/halo01.vmt");
+	
+	PrecacheSound("common/buy_tick", true);
 	
 	for (int i = 1; i <= 7; i++)
 	{

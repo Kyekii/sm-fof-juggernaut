@@ -23,6 +23,7 @@ This gamemode can support up to 24 players (Teamplay mode's max), but for balanc
 | Variable | Accepts | Range | Default | Description |
 | --- | --- | --- | --- | --- |
 | `jm_enabled` | boolean | 0-1 | 1 | Whether Juggernaut Mode is on or not. |
+| `jm_beacontime` | int | 0-999 | 30 | Time it takes, from the round start, until the Juggernaut's beacon is enabled.
 | `jm_config` | string | path | configs/juggernaut_cfg.txt | Location of the Juggernaut config file, relative to addons/sourcemod. |
 | `jm_medics` | float | 0-1 | 0.50 | Percentage of players on the human side that will receive whiskey along with their weapons. |
 | `jm_rage` | bool | 0-1 | 1 | Whether the Juggernaut's speed will scale with health. |
@@ -35,7 +36,8 @@ This gamemode can support up to 24 players (Teamplay mode's max), but for balanc
 ### Commands (admin only)
 
 | Command | Description |
-| --- | --- 
+| --- | --- |
+| `jm_dump` | Dump the Juggernaut array and other miscellaneous debug information. |
 | `jm_reload` | Force a reload of the Juggernaut config file. |
 
 ## License
@@ -54,7 +56,7 @@ Chitch
 Wolfgang V2.35  
 Nimrod Hempel  
 Judge Uchiha  
-yami  
+Yami  
 Scamper9  
 Dooge  
 tadtakker  

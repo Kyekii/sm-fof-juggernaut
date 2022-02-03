@@ -30,6 +30,7 @@ juggernaut_mode
         weapon_spencer { weight 2 }
 		weapon_carbine { weight 2 }
         weapon_whiskey { weight 2 }
+		weapon_dynamite { weight 2 }
 
         weapon_shotgun { weight 1 }
 		weapon_henryrifle { weight 1 }
