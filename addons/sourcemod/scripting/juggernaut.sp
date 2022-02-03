@@ -738,7 +738,6 @@ void PickJuggernaut()
 	for (new p = 0; p < MAXPLAYERS+1; p++)
 	{
 		if (AlreadyJuggernaut[p] == 0) continue;
-		PrintToServer("[JUGGERNAUT DEBUG] Overflow %i, DisconnectCount %i, client_count %i, AlreadyJuggernautIndex %i", overflow, DisconnectCount, client_count, AlreadyJuggernautIndex);	
 		overflow++;
 		if (overflow - DisconnectCount >= client_count || AlreadyJuggernautIndex - DisconnectCount <= 0 || AlreadyJuggernautIndex - DisconnectCount >= client_count)
 		{
