@@ -132,13 +132,14 @@ Action Command_Dump(int caller, int args)
 		PrintToServer("[JUGGERNAUT DUMP - %.3f] Current juggernaut: %i - %N", GetGameTime(), juggernaut, juggernaut);
 	}
 
-	for (new i = 1; i <= MaxClients; i++)
+	for (new i = 0; i <= MaxClients; i++)
 	{
 		int tmp = GetClientOfUserId(AlreadyJuggernaut[i]);
-		if (AlreadyJuggernaut[i] == 0)
+		if (AlreadyJuggernaut[i] == 0 || tmp == 0)
 		{
 			continue;
 		}
+		
 		else if (IsClientInGame(tmp))
 		{
 			PrintToServer("[JUGGERNAUT DUMP - %.3f] AlreadyJuggernaut: id %i, index %i - %N", GetGameTime(), AlreadyJuggernaut[i], tmp, tmp);
@@ -230,7 +231,7 @@ void Event_Spawn(Event event, const char[] name, bool dontBroadcast)
 	if (!isEnabled()) return;
 	int userid = GetEventInt(event, "userid");
 	int client = GetClientOfUserId(userid);
-	if ((!InGrace && GameLive) || IsFakeClient(client))
+	if (!InGrace && GameLive && IsPlayerAlive(client))
 	{
 		SDKHooks_TakeDamage(client, client, client, 999.0);
 		ChangeClientTeam(client, TEAM_HUMAN);
@@ -739,6 +740,7 @@ void PickJuggernaut()
 	{
 		if (AlreadyJuggernaut[p] == 0) continue;
 		overflow++;
+		PrintToServer("[JUGGERNAUT] overflow %i, disconnectcount %i, alreadyjuggernautindex %i, client_count %i", overflow, DisconnectCount, AlreadyJuggernautIndex, client_count);
 		if (overflow - DisconnectCount >= client_count || AlreadyJuggernautIndex - DisconnectCount <= 0 || AlreadyJuggernautIndex - DisconnectCount >= client_count)
 		{
 			ClearJuggernauts();
