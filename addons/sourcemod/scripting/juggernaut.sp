@@ -81,7 +81,7 @@ public Plugin myinfo =
 	name = "Juggernaut",
 	author = "Kyeki",
 	description = "Juggernaut gamemode for Fistful of Frags",
-	version = "1.1",
+	version = "1.11",
 	url = "https://github.com/Kyekii/sm-fof-juggernaut"
 };
 
@@ -347,7 +347,7 @@ void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
 	JuggernautBeacon = false;
 	DeathTime = 0;
 	h_DeathBeacon = CreateTimer(1.0, Timer_DeathBeacon, .flags = TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
-	CreateTimer(2.0, Timer_Repeat, .flags = TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+	CreateTimer(1.0, Timer_Repeat, .flags = TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 	CreateTimer(2.0, Timer_Grace, .flags = TIMER_FLAG_NO_MAPCHANGE);
 	GameLive = true;
 }
@@ -654,7 +654,7 @@ void PickJuggernaut_Legacy()
 	int chosen = 1, i, client_count; 
 
 	ClearJuggernauts();
-	for (i = 1; i <= MaxClients; i++)  
+	for (i = 1; i <= MAXPLAYERS; i++)  
 	{
 		if (IsClientInGame(i) && IsPlayerAlive(i))
 		{
@@ -813,6 +813,20 @@ Action Timer_Repeat(Handle timer)
 		g_AutoSetGameDescription = false;
 	}
 	RoundEndCheck();
+	if (Team_GetClientCount(TEAM_JUGGERNAUT, CLIENTFILTER_ALIVE) > 1)
+	{
+		for (new i = 1; i <= MaxClients; i++)
+		{
+			if (IsClientInGame(i) && GetClientTeam(i) == TEAM_JUGGERNAUT)
+			{
+				if (GetClientUserId(i) != CurrentJuggernautId)
+				{
+					ChangeClientTeam(i, TEAM_HUMAN);
+				}
+			}
+		}
+	}
+	
 	return Plugin_Handled;
 }
 
