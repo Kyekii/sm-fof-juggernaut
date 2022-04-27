@@ -60,7 +60,6 @@ bool AlreadyMedic[MAXPLAYERS+1] = {false, ...};
 bool JuggernautBeacon = false;
 int AlreadyJuggernaut[MAXPLAYERS+1] = {0, ...};
 int AlreadyJuggernautIndex = 0;
-int DisconnectCount;
 int DeathTime;
 
 bool GameLive = false;
@@ -81,7 +80,7 @@ public Plugin myinfo =
 	name = "Juggernaut",
 	author = "Kyeki",
 	description = "Juggernaut gamemode for Fistful of Frags",
-	version = "1.11",
+	version = "1.12",
 	url = "https://github.com/Kyekii/sm-fof-juggernaut"
 };
 
@@ -109,7 +108,6 @@ public void OnPluginStart()
 	HookEvent("round_end", Event_RoundEnd);
 	HookEvent("player_activate", Event_Announce);
 	HookEvent("player_spawn", Event_Spawn);
-	HookEvent("player_disconnect", Event_Disconnect);
 	HookEvent("player_death", Event_Death);
 	
 	AddNormalSoundHook(SoundReplace);
@@ -139,17 +137,12 @@ Action Command_Dump(int caller, int args)
 		{
 			continue;
 		}
-		
-		else if (IsClientInGame(tmp))
+		else (IsClientInGame(tmp))
 		{
-			PrintToServer("[JUGGERNAUT DUMP - %.3f] AlreadyJuggernaut: id %i, index %i - %N", GetGameTime(), AlreadyJuggernaut[i], tmp, tmp);
-		}
-		else 
-		{
-			PrintToServer("[JUGGERNAUT DUMP - %.3f] AlreadyJuggernaut: id %i - not in game", GetGameTime(), AlreadyJuggernaut[i]);
+			PrintToServer("[JUGGERNAUT DUMP - %.3f] AlreadyJuggernautIndex %i, AlreadyJuggernaut: id %i, index %i - %N", GetGameTime(), i, AlreadyJuggernaut[i], tmp, tmp);
 		}
 	}
-	
+
 	return Plugin_Handled;
 }
 
@@ -216,14 +209,6 @@ void Event_Death(Event event, const char[] name, bool dontBroadcast)
 		SetEntityRenderColor(client, 255, 255, 255, 255);
 		PrintToChatAll("The Juggernaut's beacon has been disabled.");
 	}
-}
-
-void Event_Disconnect(Event event, const char[] name, bool dontBroadcast)
-{
-	if (!isEnabled()) return;
-	if (!GameLive) return;
-	
-	DisconnectCount++; // this is to ensure that any players that leave during warmup aren't counted as part of the disconnect count
 }
 
 void Event_Spawn(Event event, const char[] name, bool dontBroadcast)
@@ -629,7 +614,6 @@ Action Timer_Freeze(Handle timer, float speed) // this shouldn't be required, bu
 public void ClearJuggernauts()
 {
 	AlreadyJuggernautIndex = 0;
-	DisconnectCount = 0;
 	for (new i = 0; i < MAXPLAYERS+1; i++)
 	{
 		AlreadyJuggernaut[i] = 0;
@@ -729,19 +713,27 @@ void PickJuggernaut()
 	ChangeClientTeam(chosen, TEAM_JUGGERNAUT);
 	CreateTimer(5.0, Timer_Freeze, 1.0, TIMER_FLAG_NO_MAPCHANGE);
 	CurrentJuggernautId = GetClientUserId(chosen);
-	PrintToServer("[JUGGERNAUT - %.3f] JuggernautArrayIndex: %i", GetGameTime(), AlreadyJuggernautIndex);
-	
+
+	PrintToServer("[JUGGERNAUT - %.3f] Logging playerid %i in AlreadyJuggernautIndex %i", GetGameTime(), CurrentJuggernautId, AlreadyJuggernautIndex);
 	AlreadyJuggernaut[AlreadyJuggernautIndex] = CurrentJuggernautId;
 	AlreadyJuggernautIndex++
+
+	for (new p = 0; p <= AlreadyJuggernautIndex; p++)
+    {
+		if (AlreadyJuggernaut[p] == 0) continue;
+		int userid = GetClientOfUserId(AlreadyJuggernaut[p]);
+		if (userid == 0)
+        {
+			PrintToServer("[JUGGERNAUT - %.3f] Clearing invalid userid, index %i", GetGameTime(), p)
+			AlreadyJuggernaut[p] = 0;
+		}
+	}
 	
-	PrintToServer("[JUGGERNAUT - %.3f] Logging playerid %i", GetGameTime(), CurrentJuggernautId);
-		
 	for (new p = 0; p < MAXPLAYERS+1; p++)
 	{
 		if (AlreadyJuggernaut[p] == 0) continue;
 		overflow++;
-		PrintToServer("[JUGGERNAUT] overflow %i, disconnectcount %i, alreadyjuggernautindex %i, client_count %i", overflow, DisconnectCount, AlreadyJuggernautIndex, client_count);
-		if (overflow - DisconnectCount >= client_count || AlreadyJuggernautIndex - DisconnectCount <= 0 || AlreadyJuggernautIndex - DisconnectCount >= client_count)
+		if (overflow >= GetClientCount(true))
 		{
 			ClearJuggernauts();
 			PrintToServer("[JUGGERNAUT - %.3f] Clearing juggernaut array", GetGameTime());
