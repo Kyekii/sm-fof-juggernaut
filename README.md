@@ -14,7 +14,9 @@ Be sure you have properly installed SourceMod and that your server is functionin
 
 To install, extract the latest release in your SourceMod's addons folder. If compiling manually, be sure to include both SteamWorks and smlib in your scripting/include folder.
 
-Once installed, edit the following server.cfg's cvars so that Teamplay mode is enabled: fof_sv_currentmode 2, mp_teamplay 1, fof_sv_maxteams 2. Be **ABSOLUTELY** certain to change mapcycle_tp.txt to the maps you want your server to run for this mode. All maps except Teamplay maps are supported. Once this is done, the plugin is ready to be used. 
+Once installed, edit the following server.cfg cvars so that Teamplay mode is enabled: fof_sv_currentmode 2, mp_teamplay 1, fof_sv_maxteams 2. Be **ABSOLUTELY** certain to change mapcycle_tp.txt to the maps you want your server to run for this mode. Once this is done, the plugin is ready to be used. 
+
+All maps except Teamplay maps are supported (this is why you need to replace mapcycle_tp.txt). I'd highly recommend replacing mapcycle_tp.txt with a copy of mapcycle.txt. This will mean that the mode will run all standard Shootout maps.
 
 ## Server Settings
 This gamemode can support up to 24 players (Teamplay mode's max), but for balance reasons, it should be kept to 20 players or less.
