@@ -56,19 +56,19 @@ int g_JuggernautSecondaryTotalWeight;
 KeyValues g_LootTable;
 int g_LootTotalWeight;
 
-bool AlreadyMedic[MAXPLAYERS+1] = {false, ...};
 bool JuggernautBeacon = false;
 int AlreadyJuggernaut[MAXPLAYERS+1] = {0, ...};
+Handle JuggernautPicks;
+Handle MedicPicks;
 int AlreadyJuggernautIndex = 0;
+int CurrentJuggernautId;
 int DeathTime;
 
-bool GameLive = false;
 bool InGrace = false;
 
 bool g_AutoSetGameDescription = false;
 int g_VigilanteModelIndex;
 int g_BandidoModelIndex;
-int CurrentJuggernautId;
 
 int g_BeamSprite = -1;
 int g_HaloSprite = -1;
@@ -80,7 +80,7 @@ public Plugin myinfo =
 	name = "Juggernaut",
 	author = "Kyeki",
 	description = "Juggernaut gamemode for Fistful of Frags",
-	version = "1.12",
+	version = "1.13",
 	url = "https://github.com/Kyekii/sm-fof-juggernaut"
 };
 
@@ -111,19 +111,32 @@ public void OnPluginStart()
 	HookEvent("player_death", Event_Death);
 	
 	AddNormalSoundHook(SoundReplace);
+
+	JuggernautPicks = CreateArray(1, 0);
+	MedicPicks = CreateArray(1, 0);
+}
+
+Action Command_Reload(int caller, int args)
+{
+	InitializeJuggernautMode();
+	return Plugin_Handled;
 }
 
 Action Command_Dump(int caller, int args)
 {
-	for (new p = 1; p <= MaxClients; p++)
+	PrintToServer("[JUGGERNAUT DUMP - %.3f] Started dump", GetGameTime());
+	if (GetArraySize(MedicPicks) != 0)
 	{
-		if (IsClientInGame(p) && AlreadyMedic[p] == true)
+		for (new p = 0; p <= GetArraySize(MedicPicks)-1; p++)
 		{
-			PrintToServer("[JUGGERNAUT DUMP - %.3f] AlreadyMedics: %i - %N", GetGameTime(), p, p);
+			if (IsClientInGame(GetArrayCell(MedicPicks, p)) && GetArrayCell(MedicPicks, p) != 0)
+			{
+				PrintToServer("[JUGGERNAUT DUMP - %.3f] Non-Medic survivors: %i - %N", GetGameTime(), p, GetArrayCell(MedicPicks, p));
+			}
+			else continue;
 		}
-		else continue;
 	}
-	
+
 	int juggernaut = GetClientOfUserId(CurrentJuggernautId)
 	if (juggernaut != 0)
 	{
@@ -139,26 +152,160 @@ Action Command_Dump(int caller, int args)
 		}
 		else (IsClientInGame(tmp))
 		{
-			PrintToServer("[JUGGERNAUT DUMP - %.3f] AlreadyJuggernautIndex %i, AlreadyJuggernaut: id %i, index %i - %N", GetGameTime(), i, AlreadyJuggernaut[i], tmp, tmp);
+			PrintToServer("[JUGGERNAUT DUMP - %.3f] AlreadyJuggernautIndex %i, AlreadyJuggernaut: id %i, client index %i - %N", GetGameTime(), i, AlreadyJuggernaut[i], tmp, tmp);
 		}
 	}
+	return Plugin_Handled;
+} 
 
+public Action:Hook_PreThinkPost(int client)
+{
+	if (IsClientInGame(client) && isJuggernaut(client) && isEnabled())
+    {
+		float slowdown = GetConVarFloat(g_JuggernautSpeed);
+		float interval = (235.0 - slowdown) / 75
+		if ((GetClientHealth(client) < 100) && (GetConVarBool(g_JuggernautRage)))
+		{
+			slowdown = slowdown + interval * (100 - GetClientHealth(client));
+			if (GetClientHealth(client) <= 25)
+			{
+				slowdown = 235.0
+			}
+		}
+		SetEntPropFloat(client, Prop_Data, "m_flMaxspeed", slowdown);
+    }
+}
+
+Action Hook_OnWeaponCanUse(int client, int weapon)
+{
+	if (isJuggernaut(client) && isEnabled())
+	{
+		char item[32];
+		GetEntityClassname(weapon, item, sizeof(item));
+		if (StrEqual(item, "weapon_whiskey"))
+		{
+			PrintToChat(client, "The juggernaut can't use whiskey!");
+		}
+		// melee increases run speed and would not be the most fair as juggernaut
+		if (StrEqual(item, "weapon_axe") || StrEqual(item, "weapon_machete") || StrEqual(item, "weapon_knife"))
+		{
+			PrintToChat(client, "The juggernaut can't use melee weapons!");
+		}
+	}
+	return Plugin_Continue;
+}
+
+public Action:Hook_OnTakeDamage(victim, &attacker, &inflictor, &Float:damage, &damagetype)
+{
+	if (isEnabled() && isJuggernaut(victim)) 
+	{
+		int players = GetClientCount(false);	
+		float ratio = 0.25
+		if (players > 1 && GetConVarBool(g_ScaleDamage) == true)
+		{
+			ratio = ratio - float(players) * 0.02
+			if (ratio <= 0.05)
+			{
+				ratio = 0.05
+			}
+		}
+
+		if (GetConVarBool(g_ScaleDamage) != true)
+		{
+			ratio = GetConVarFloat(g_ScaleOverride);
+		}
+
+		if (damagetype != (1 << 14)) // juggernauts take full damage from drowning (insta-kill water hazards like on robertlee)
+		{
+			damage = damage * ratio; 
+		}
+		return Plugin_Changed;
+	}
+	return Plugin_Continue;
+}
+
+Action SoundReplace(int clients[MAXPLAYERS], int &numClients, char sample[PLATFORM_MAX_PATH], int &entity, int &channel, float &volume, int &level, int &pitch, int &flags, char soundEntry[PLATFORM_MAX_PATH], int &seed)
+{
+	if ((0 < entity <= MaxClients) && isEnabled())
+	{
+		if (isJuggernaut(entity))
+		{
+			if (StrContains(sample, "npc/mexican") != -1 || StrContains(sample, "player/voice") != -1)
+			{
+				Format(sample, sizeof(sample), "npc/mexican/andale-0%i.wav", GetRandomInt(1, 7));
+				return Plugin_Changed;
+			}
+		}
+	}
+	return Plugin_Continue;
+}
+
+Action Timer_Repeat(Handle timer)
+{
+	if (!isEnabled()) return Plugin_Continue;
+	if (g_AutoSetGameDescription)
+	{
+		SetGameDescription("Juggernaut");
+		g_AutoSetGameDescription = false;
+	}
+	RoundEndCheck();
+	if (Team_GetClientCount(TEAM_JUGGERNAUT, CLIENTFILTER_ALIVE) > 1)
+	{
+		for (new i = 1; i <= MaxClients; i++)
+		{
+			if (IsClientInGame(i) && GetClientTeam(i) == TEAM_JUGGERNAUT)
+			{
+				if (GetClientUserId(i) != CurrentJuggernautId)
+				{
+					ChangeClientTeam(i, TEAM_HUMAN);
+				}
+			}
+		}
+	} 
 	return Plugin_Handled;
 }
 
-void Event_RoundEnd(Event event, const char[] name, bool dontBroadcast)
+Action Timer_GiveWhiskey(Handle timer, int client)
 {
-	if (!isEnabled()) return;
+	if (!IsClientInGame(client)) return Plugin_Stop;
+	GivePlayerItem(client, "weapon_whiskey");
+	return Plugin_Handled;
+}
 
-	InGrace = true;
-	CloseHandle(h_DeathBeacon)
+Action Timer_Grace(Handle timer)
+{
+	InGrace = false;	
+	return Plugin_Handled;
+}
+
+Action Timer_Disclaimer(Handle timer, int iuserid)
+{
+	int client = GetClientOfUserId(iuserid);
+	if (client > 0 && IsClientInGame(client))
+	{
+        PrintToChat(client, "\x04/*\x07FFDA00 This server is running \x07FF0000Juggernaut,\x07FFDA00 a custom gamemode by \x07BF00FFKyeki.\x04 */");
+	}
+	return Plugin_Handled;
+}
+
+Action Timer_Freeze(Handle timer, float speed) // this shouldn't be required, but force switching teams after the player spawns unfreezes players
+{
+	for (new i = 1; i <= MaxClients; i++)
+	{
+		if (IsClientInGame(i))
+		{
+			SetEntPropFloat(i, Prop_Data, "m_flLaggedMovementValue", speed);
+		}
+	}
+	return Plugin_Continue;
 }
 
 Action Timer_Beacon(Handle timer)
 {
-	if (JuggernautBeacon == false) return Plugin_Stop;
 	int client = GetClientOfUserId(CurrentJuggernautId);
-	if (client == 0) return Plugin_Stop;
+	if (JuggernautBeacon == false || client == 0) return Plugin_Stop;
+
+	// the following code is from the SourceMod beacon command. It's possible to just use ServerCmd, but this implementation doesn't spam the chat.
 	float origin[3];
 	int redColor[4] = {255, 75, 75, 255};
 	
@@ -168,66 +315,28 @@ Action Timer_Beacon(Handle timer)
 	TE_SendToAll();
 	
 	GetClientEyePosition(client, origin);
-	EmitAmbientSound("common/buy_tick.wav", origin, client, SNDLEVEL_RAIDSIREN);	
+	EmitAmbientSound("common/buy_tick.wav", origin, client, SNDLEVEL_RAIDSIREN); 
 	
 	return Plugin_Handled;
 }
 
 Action Timer_DeathBeacon(Handle timer)
 {
-	if (!isEnabled()) return Plugin_Continue;
-	if (JuggernautBeacon == true) return Plugin_Continue;
-	int client = GetClientOfUserId(CurrentJuggernautId);
+	if (!isEnabled() || JuggernautBeacon == true || GetClientOfUserId(CurrentJuggernautId == 0)) return Plugin_Continue;
+
 	int time = GetConVarInt(g_BeaconTime);
-	if (client == 0) return Plugin_Continue;
-	
 	if (DeathTime < time)
 	{
 		DeathTime++;
 	}
-	
+
 	if (DeathTime == time)
 	{
 		JuggernautBeacon = true;
 		CreateTimer(1.0, Timer_Beacon, .flags = TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 		PrintToChatAll("%i seconds has passed without deaths. The Juggernaut's beacon has been enabled!", time);
-		return Plugin_Handled;
 	}
 	return Plugin_Handled;
-}
-
-void Event_Death(Event event, const char[] name, bool dontBroadcast)
-{
-	if (!isEnabled()) return;
-	
-	int client = GetClientOfUserId(CurrentJuggernautId);
-	DeathTime = 0;
-	
-	if (JuggernautBeacon == true)
-	{
-		JuggernautBeacon = false;
-		SetEntityRenderColor(client, 255, 255, 255, 255);
-		PrintToChatAll("The Juggernaut's beacon has been disabled.");
-	}
-}
-
-void Event_Spawn(Event event, const char[] name, bool dontBroadcast)
-{
-	if (!isEnabled()) return;
-	int userid = GetEventInt(event, "userid");
-	int client = GetClientOfUserId(userid);
-	if (!InGrace && GameLive && IsPlayerAlive(client))
-	{
-		SDKHooks_TakeDamage(client, client, client, 999.0);
-		ChangeClientTeam(client, TEAM_HUMAN);
-	}
-}
-
-void Event_Announce(Event event, const char[] name, bool dontBroadcast)
-{
-	if (!isEnabled()) return;
-	int userid = GetEventInt(event, "userid");
-	CreateTimer(3.0, Timer_Disclaimer, userid, TIMER_FLAG_NO_MAPCHANGE);
 }
 
 Action Timer_GivePrimaryWeapon(Handle timer, int userid)
@@ -236,27 +345,23 @@ Action Timer_GivePrimaryWeapon(Handle timer, int userid)
 	
 	int client = GetClientOfUserId(userid);
 	char weapon[32];
-	char tmp[64];
 	
 	if (isHuman(client))
 	{
 		GetRandomValueFromTable(g_GearPrimaryTable, g_GearPrimaryTotalWeight, weapon, sizeof(weapon));
 		GivePlayerItem(client, weapon);
-		Format(tmp, sizeof(tmp), "use %s", weapon);
-		ClientCommand(client, tmp);
 	}
 	
 	else if (isJuggernaut(client))
 	{
 		GetRandomValueFromTable(g_JuggernautPrimaryTable, g_JuggernautPrimaryTotalWeight, weapon, sizeof(weapon));
 		GivePlayerItem(client, weapon);
-		Format(tmp, sizeof(tmp), "use %s", weapon);
-		ClientCommand(client, tmp);
 	}
 	return Plugin_Handled;
 }
 
-Action Timer_GiveSecondaryWeapon(Handle timer, int userid)
+// having two functions that do basically the same thing sucks, but SourceMod seemingly doesn't let you pass more than 1 variable to timers :(
+Action Timer_GiveSecondaryWeapon(Handle timer, int userid) 
 {
 	if (!isEnabled()) return Plugin_Handled;
 	
@@ -268,7 +373,6 @@ Action Timer_GiveSecondaryWeapon(Handle timer, int userid)
 		GetRandomValueFromTable(g_GearSecondaryTable, g_GearSecondaryTotalWeight, weapon, sizeof(weapon));
 		GivePlayerItem(client, weapon);
 	}
-	
 	else if (isJuggernaut(client))
 	{
 		GetRandomValueFromTable(g_JuggernautSecondaryTable, g_JuggernautSecondaryTotalWeight, weapon, sizeof(weapon));
@@ -277,26 +381,67 @@ Action Timer_GiveSecondaryWeapon(Handle timer, int userid)
 	return Plugin_Handled;
 }
 
-void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
+void Event_RoundEnd(Event event, const char[] name, bool dontBroadcast)
 {
 	if (!isEnabled()) return;
 
 	InGrace = true;
-	if (GetConVarBool(g_JuggernautPicker) == false)
+	DeathTime = 0;
+	if (h_DeathBeacon != INVALID_HANDLE)
 	{
-		PickJuggernaut();
+		CloseHandle(h_DeathBeacon)
+		h_DeathBeacon = INVALID_HANDLE;
 	}
-	else
+}
+
+void Event_Death(Event event, const char[] name, bool dontBroadcast)
+{
+	if (!isEnabled()) return;
+
+	DeathTime = 0;
+	if (JuggernautBeacon == true)
 	{
-		PickJuggernaut_Legacy();
+		JuggernautBeacon = false;
+		SetEntityRenderColor(GetClientOfUserId(CurrentJuggernautId), 255, 255, 255, 255);
+		PrintToChatAll("The Juggernaut's beacon has been disabled.");
 	}
+}
+
+void Event_Spawn(Event event, const char[] name, bool dontBroadcast)
+{
+	int client = GetClientOfUserId(GetEventInt(event, "userid"));
+	if (!InGrace && isEnabled() && GetEventInt(event, "userid") != CurrentJuggernautId) // idk why this was needed, since Timer_Repeat should stop people from being on the wrong team, but this was needed too
+	{
+		SDKHooks_TakeDamage(client, client, client, 999.0);
+		ChangeClientTeam(client, TEAM_HUMAN);
+	}
+}
+
+void Event_Announce(Event event, const char[] name, bool dontBroadcast)
+{
+	if (!isEnabled()) return;
+	CreateTimer(3.0, Timer_Disclaimer, GetEventInt(event, "userid"), TIMER_FLAG_NO_MAPCHANGE);
+}
+
+void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
+{
+	if (!isEnabled()) return;
+
+	if (h_DeathBeacon != INVALID_HANDLE) // shouldn't be necessary, but the round doesn't properly "end" and CloseHandle in Event_RoundEnd if all players leave the server
+	{
+		CloseHandle(h_DeathBeacon)
+		h_DeathBeacon = INVALID_HANDLE;
+	}
+
+	DeathTime = 0;
+	InGrace = true;
+	PickJuggernaut();
 	
 	for (new i = 1; i <= GetClientCount(); i++) 
 	{
 		if (IsClientInGame(i))
 		{
 			int userid = GetClientUserId(i);
-			SetEntPropFloat(i, Prop_Data, "m_flLaggedMovementValue", 0.0);
 			SetEntityRenderColor(i, 255, 255, 255, 255);
 			CreateTimer(0.2, Timer_GiveSecondaryWeapon, userid, TIMER_FLAG_NO_MAPCHANGE);
 			CreateTimer(0.4, Timer_GivePrimaryWeapon, userid, TIMER_FLAG_NO_MAPCHANGE);
@@ -309,7 +454,6 @@ void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
 			if (isJuggernaut(i))
 			{
 				char tmp[PLATFORM_MAX_PATH];
-				
 				Entity_SetModelIndex(i, g_BandidoModelIndex);
 				Format(tmp, sizeof(tmp), "npc/mexican/andale-0%i.wav", GetRandomInt(1, 7));
 				EmitSoundToAll(tmp, i, SNDCHAN_AUTO, SNDLEVEL_SCREAMING, SND_CHANGEPITCH, SNDVOL_NORMAL); 
@@ -317,9 +461,13 @@ void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
 			}
 		}
 	}
+
 	PickMedics();
 	ConvertWhiskey(g_LootTable, g_LootTotalWeight);
 	
+	CreateTimer(0.1, Timer_Freeze, 0.0, TIMER_FLAG_NO_MAPCHANGE);
+	CreateTimer(5.0, Timer_Freeze, 1.0, TIMER_FLAG_NO_MAPCHANGE);
+
 	g_TeambalanceAllowedCvar.SetInt(0, false, false);
 	g_TeamsUnbalanceLimitCvar.SetInt(0, false, false);
 	g_AutoteambalanceCvar.SetInt(0, false, false);
@@ -330,23 +478,10 @@ void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
 	Entity_KillAllByClassName("fof_buyzone");
 	
 	JuggernautBeacon = false;
-	DeathTime = 0;
+
 	h_DeathBeacon = CreateTimer(1.0, Timer_DeathBeacon, .flags = TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 	CreateTimer(1.0, Timer_Repeat, .flags = TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 	CreateTimer(2.0, Timer_Grace, .flags = TIMER_FLAG_NO_MAPCHANGE);
-	GameLive = true;
-}
-
-Action Timer_Grace(Handle timer)
-{
-	InGrace = false;
-	return Plugin_Handled;
-}
-
-Action Command_Reload(int caller, int args)
-{
-	InitializeJuggernautMode();
-	return Plugin_Handled;
 }
 
 void InitializeJuggernautMode()
@@ -356,21 +491,17 @@ void InitializeJuggernautMode()
 
 	KeyValues config = LoadConfigFile(file);
 
+	// clear tables if they exist, and build new weight tables. then delete config keyvalue once we're done
 	delete g_LootTable;
 	g_LootTable = BuildWeightTable(config, "loot", g_LootTotalWeight);
-
 	delete g_GearPrimaryTable;
 	g_GearPrimaryTable = BuildWeightTable(config, "gear_primary", g_GearPrimaryTotalWeight);
-
 	delete g_GearSecondaryTable;
 	g_GearSecondaryTable = BuildWeightTable(config, "gear_secondary", g_GearSecondaryTotalWeight);
-	
 	delete g_JuggernautPrimaryTable;
 	g_JuggernautPrimaryTable = BuildWeightTable(config, "juggernaut_primary", g_JuggernautPrimaryTotalWeight);
-
 	delete g_JuggernautSecondaryTable;
 	g_JuggernautSecondaryTable = BuildWeightTable(config, "juggernaut_secondary", g_JuggernautSecondaryTotalWeight);
-
 	delete config;
 }
 
@@ -412,7 +543,6 @@ KeyValues BuildWeightTable(KeyValues config, const char[] name, int& total_weigh
 			}
 		}
 		while (config.GotoNextKey());
-
 	}
 	else
 	{
@@ -420,7 +550,6 @@ KeyValues BuildWeightTable(KeyValues config, const char[] name, int& total_weigh
 		SetFailState("A valid \"%s\" key was not defined", name);
 	}
 	PrintToServer("BuildWeightTable %s end total_weight: %d", name, total_weight);
-
 	return table;
 }
 
@@ -451,12 +580,12 @@ bool GetRandomValueFromTable(KeyValues table, int total_weight, char[] value, in
 void ConvertWhiskey(KeyValues loot_table, int loot_total_weight)
 {
 	char loot[128];
-	int count = 0;
 	int whiskey = INVALID_ENT_REFERENCE;
+	int horse = INVALID_ENT_REFERENCE;
 	int converted = INVALID_ENT_REFERENCE;
 	float origin[3], angles[3];
 
-	while((whiskey = FindEntityByClassname(whiskey, "item_whiskey")) != INVALID_ENT_REFERENCE)
+	while ((whiskey = FindEntityByClassname(whiskey, "item_whiskey")) != INVALID_ENT_REFERENCE)
 	{
 		Entity_GetAbsOrigin(whiskey, origin);
 		Entity_GetAbsAngles(whiskey, angles);
@@ -467,8 +596,11 @@ void ConvertWhiskey(KeyValues loot_table, int loot_total_weight)
 
 		converted = Weapon_Create(loot, origin, angles);
 		Entity_AddEFlags(converted, EFL_NO_GAME_PHYSICS_SIMULATION | EFL_DONTBLOCKLOS);
+	}
 
-		count++;
+	while ((horse = FindEntityByClassname(horse, "fof_horse")) != INVALID_ENT_REFERENCE)
+	{
+		Entity_Kill(horse);
 	}
 }
 
@@ -477,6 +609,12 @@ int SpawnTeamplayEntity()
 	char tmp[128];
 	int ent = FindEntityByClassname(INVALID_ENT_REFERENCE, "fof_teamplay");
 	
+	if (!IsValidEntity(ent)) // if not loaded into tp_ map that has existing fof_teamplay, make one
+	{
+		ent = CreateEntityByName("fof_teamplay");
+		DispatchKeyValue(ent, "targetname", "tpjuggernaut");
+	}
+
 	if (IsValidEntity(ent))
 	{
 		DispatchKeyValue(ent, "RoundBased", "1");
@@ -494,36 +632,15 @@ int SpawnTeamplayEntity()
 		DispatchKeyValue(ent, ON_NO_JUGGERNAUT_ALIVE, INPUT_HUMAN_VICTORY);
 		Format(tmp, sizeof(tmp), "!self,%s,,0,-1", INPUT_JUGGERNAUT_VICTORY);
 		DispatchKeyValue(ent, ON_NO_HUMAN_ALIVE, tmp);
-	}
-
-	else if (!IsValidEntity(ent))
-	{
-		ent = CreateEntityByName("fof_teamplay");
-		DispatchKeyValue(ent, "targetname", "tpjuggernaut");
-
-		DispatchKeyValue(ent, "RoundBased", "1");
-		DispatchKeyValue(ent, "RespawnSystem", "1");
-
-		Format(tmp, sizeof(tmp), "!self,RoundTime,%d,0,-1", GetRoundTime());
-		DispatchKeyValue(ent, "OnNewRound", tmp);
-		DispatchKeyValue(ent, "OnNewRound", "!self,ExtraTime,15,0.1,-1");
-
-		Format(tmp, sizeof(tmp), "!self,ExtraTime,%d,0,-1", 15);
-		DispatchKeyValue(ent, "OnTimerEnd", tmp);
-
-		Format(tmp, sizeof(tmp), "!self,%s,,0,-1", INPUT_JUGGERNAUT_VICTORY);
-		DispatchKeyValue(ent, "OnRoundTimeEnd", tmp);
-		DispatchKeyValue(ent, ON_NO_JUGGERNAUT_ALIVE, INPUT_HUMAN_VICTORY);
-		Format(tmp, sizeof(tmp), "!self,%s,,0,-1", INPUT_JUGGERNAUT_VICTORY);
-		DispatchKeyValue(ent, ON_NO_HUMAN_ALIVE, tmp);
 
 		DispatchSpawn(ent);
 		ActivateEntity(ent);
 	}
-	return ent;
+	return ent; 
 }
 
-bool SetGameDescription(const char[] description)
+// FoF's server browser looks at gamemode to determine which server listing to put it under, so this is required. If it doesn't matter to you, this can be removed and SteamWorks would no longer be required.
+bool SetGameDescription(const char[] description) 
 {
     return SteamWorks_SetGameDescription(description);
 }
@@ -550,63 +667,22 @@ bool isJuggernaut(int client)
 	return GetClientTeam(client) == TEAM_JUGGERNAUT;
 }
 
-Action Timer_GiveWhiskey(Handle timer, int client)
-{
-	if (!IsClientInGame(client)) return;
-	GivePlayerItem(client, "weapon_whiskey");
-}
-
 void PickMedics()
 {
 	int HumanCount = Team_GetClientCount(TEAM_HUMAN, CLIENTFILTER_ALIVE);
-	int PlayerCount = GetClientCount(false);
 	float MedicCount = GetConVarFloat(g_MedicRatio) * HumanCount;
 	RoundToCeil(MedicCount);
-	int JuggernautClient = GetClientOfUserId(CurrentJuggernautId);
-	
-	for (new p = 0; p < MAXPLAYERS+1; p++)
-	{
-		AlreadyMedic[p] = false;
-	}
 	
 	for (new p = 1; p <= MedicCount; p++)
 	{
-		int random = GetRandomInt(1, PlayerCount);
-		
+		int randomindex = GetRandomInt(0, GetArraySize(MedicPicks)-1)
+		int random = GetArrayCell(MedicPicks, randomindex)
 		if (IsClientInGame(random))
-		{ 
-			while (((AlreadyMedic[random] == true)) || (random == JuggernautClient) || (!IsClientInGame(random)) || (!IsClientConnected(random)))
-			{
-				random = GetRandomInt(1, PlayerCount);	
-				int overflow;
-				overflow++
-				if (overflow > 64) break;
-			}
+		{
+			RemoveFromArray(MedicPicks, randomindex)
 			PrintToServer("[JUGGERNAUT - %.3f] PickMedics random: %i - %N", GetGameTime(), random, random);
 			PrintCenterText(random, "You are a medic - heal your teammates!");
-			CreateTimer(0.3, Timer_GiveWhiskey, random, TIMER_FLAG_NO_MAPCHANGE);
-			AlreadyMedic[random] = true;
-		}
-	}
-}
-
-Action Timer_Disclaimer(Handle timer, int iuserid)
-{
-	int client = GetClientOfUserId(iuserid);
-	if (client > 0 && IsClientInGame(client))
-	{
-        PrintToChat(client, "\x04/*\x07FFDA00 This server is running \x07FF0000Juggernaut,\x07FFDA00 a custom gamemode by \x07BF00FFKyeki.\x04 */");
-	}
-	return;
-}
-
-Action Timer_Freeze(Handle timer, float speed) // this shouldn't be required, but force switching teams after the player spawns unfreezes players
-{
-	for (new i = 1; i <= MaxClients; i++)
-	{
-		if (IsClientInGame(i))
-		{
-			SetEntPropFloat(i, Prop_Data, "m_flLaggedMovementValue", speed);
+			CreateTimer(0.5, Timer_GiveWhiskey, random, TIMER_FLAG_NO_MAPCHANGE);
 		}
 	}
 }
@@ -622,7 +698,7 @@ public void ClearJuggernauts()
 
 public CheckJuggernaut(int client)
 {
-	if (!IsClientConnected(client)) return 1;
+	if (!IsClientInGame(client) || !IsClientConnected(client)) return 1;
 	int clientid = GetClientUserId(client);
 	for (new i = 0; i < MAXPLAYERS+1; i++)
 	{
@@ -632,76 +708,41 @@ public CheckJuggernaut(int client)
 	return 0;
 }
 
-void PickJuggernaut_Legacy()
-{
-	int clients[MAXPLAYERS+1];
-	int chosen = 1, i, client_count; 
-
-	ClearJuggernauts();
-	for (i = 1; i <= MAXPLAYERS; i++)  
-	{
-		if (IsClientInGame(i) && IsPlayerAlive(i))
-		{
-			ChangeClientTeam(i, TEAM_HUMAN);
-			clients[client_count] = i;
-			client_count++;
-		}
-		else continue;
-	}
-	
-	chosen = GetRandomInt(1, client_count);  
-	while (!IsClientInGame(chosen) || !IsClientConnected(chosen))
-	{
-		PrintToServer("[JUGGERNAUT - %.3f] Rerolling juggernaut", GetGameTime());
-		chosen = GetRandomInt(1, client_count);  
-	}
-	
-	if (GetTeamClientCount(TEAM_JUGGERNAUT) != 0)
-	{
-		for (i = 1; i <= client_count; i++)
-		{
-			if (IsClientInGame(i) && IsPlayerAlive(i))
-			{
-				ChangeClientTeam(i, TEAM_HUMAN);
-			}
-		}
-	}
-	
-	PrintToServer("[JUGGERNAUT - %.3f] Moving juggernaut to team", GetGameTime());
-	CreateTimer(0.1, Timer_Freeze, 0.0, TIMER_FLAG_NO_MAPCHANGE);
-	ChangeClientTeam(chosen, TEAM_JUGGERNAUT);
-	CreateTimer(5.0, Timer_Freeze, 1.0, TIMER_FLAG_NO_MAPCHANGE);
-	CurrentJuggernautId = GetClientUserId(chosen);
-}
-
 void PickJuggernaut()
 {
-	int clients[MAXPLAYERS+1];
-	int chosen = 1, i, client_count; 
-	int overflow = 0;
+	int chosen = 1, client_count, random;
 
-	for (i = 1; i <= MaxClients; i++)  
+	if (GetArraySize(JuggernautPicks) == 1)
+	{
+		ClearJuggernauts();
+		PrintToServer("[JUGGERNAUT - %.3f] Clearing juggernaut array", GetGameTime());
+	}
+
+	ClearArray(JuggernautPicks);
+	ClearArray(MedicPicks);
+	for (new i = 1; i <= MaxClients; i++)  // building list of players in the server that not only exist, but were not already picked for juggernaut previously
 	{
 		if (IsClientInGame(i) && IsPlayerAlive(i))
 		{
+			PushArrayCell(MedicPicks, i)
+			if ((!CheckJuggernaut(i) && GetConVarBool(g_JuggernautPicker) == false) || GetConVarBool(g_JuggernautPicker) == true) 
+			{
+				PushArrayCell(JuggernautPicks, i);
+			}		
 			ChangeClientTeam(i, TEAM_HUMAN);
-			clients[client_count] = i;
 			client_count++;
 		}
 		else continue;
 	}
-
-	chosen = GetRandomInt(1, MaxClients); 
-	while ((CheckJuggernaut(chosen) == 1) || !IsClientInGame(chosen) || !IsClientConnected(chosen))
-	{
-		PrintToServer("[JUGGERNAUT - %.3f] Rerolling juggernaut", GetGameTime());
-		chosen = GetRandomInt(1, MaxClients);
-	}
-	
+	// this code uses a dynamic array JuggernautPicks to narrow down the possible juggernaut. 
+	random = GetRandomInt(0, GetArraySize(JuggernautPicks)-1);
+	chosen = GetArrayCell(JuggernautPicks, random);
+	RemoveFromArray(MedicPicks, FindValueInArray(MedicPicks, chosen)); // necessary later on, so the juggernaut does not end up being a medic
 	PrintToServer("[JUGGERNAUT - %.3f] Juggernaut is %i - %N", GetGameTime(), chosen, chosen);
-	if (GetTeamClientCount(TEAM_JUGGERNAUT) != 0) // this might be superfluous, but it stopped multiple juggernauts from happening 
+
+	if (GetTeamClientCount(TEAM_JUGGERNAUT) != 0) // this check might be superfluous, but it stopped multiple juggernauts from happening 
 	{
-		for (i = 1; i <= client_count; i++)
+		for (new i = 1; i <= client_count; i++)
 		{
 			if (IsClientInGame(i) && IsPlayerAlive(i))
 			{
@@ -709,35 +750,23 @@ void PickJuggernaut()
 			}
 		}
 	}
-	CreateTimer(0.1, Timer_Freeze, 0.0, TIMER_FLAG_NO_MAPCHANGE);
+
 	ChangeClientTeam(chosen, TEAM_JUGGERNAUT);
-	CreateTimer(5.0, Timer_Freeze, 1.0, TIMER_FLAG_NO_MAPCHANGE);
-	CurrentJuggernautId = GetClientUserId(chosen);
-
-	PrintToServer("[JUGGERNAUT - %.3f] Logging playerid %i in AlreadyJuggernautIndex %i", GetGameTime(), CurrentJuggernautId, AlreadyJuggernautIndex);
-	AlreadyJuggernaut[AlreadyJuggernautIndex] = CurrentJuggernautId;
-	AlreadyJuggernautIndex++
-
-	for (new p = 0; p <= AlreadyJuggernautIndex; p++)
-    {
-		if (AlreadyJuggernaut[p] == 0) continue;
-		int userid = GetClientOfUserId(AlreadyJuggernaut[p]);
-		if (userid == 0)
-        {
-			PrintToServer("[JUGGERNAUT - %.3f] Clearing invalid userid, index %i", GetGameTime(), p)
-			AlreadyJuggernaut[p] = 0;
-		}
-	}
-	
-	for (new p = 0; p < MAXPLAYERS+1; p++)
+	if (GetConVarBool(g_JuggernautPicker) == false)
 	{
-		if (AlreadyJuggernaut[p] == 0) continue;
-		overflow++;
-		if (overflow >= GetClientCount(true))
-		{
-			ClearJuggernauts();
-			PrintToServer("[JUGGERNAUT - %.3f] Clearing juggernaut array", GetGameTime());
-			break;
+		CurrentJuggernautId = GetClientUserId(chosen);
+		PrintToServer("[JUGGERNAUT - %.3f] Logging playerid %i in AlreadyJuggernautIndex %i", GetGameTime(), CurrentJuggernautId, AlreadyJuggernautIndex);
+		AlreadyJuggernaut[AlreadyJuggernautIndex] = CurrentJuggernautId;
+		AlreadyJuggernautIndex++
+
+		for (new p = 0; p <= AlreadyJuggernautIndex; p++) // clearing AlreadyJuggernaut array of any players that left the server
+   		{
+			if (AlreadyJuggernaut[p] == 0) continue;
+			if (GetClientOfUserId(AlreadyJuggernaut[p]) == 0)
+   	    	{
+				PrintToServer("[JUGGERNAUT - %.3f] Clearing invalid userid, index %i", GetGameTime(), p)
+				AlreadyJuggernaut[p] = 0;
+			}
 		}
 	}
 }
@@ -749,7 +778,7 @@ void ConvertSpawns()
 	int converted = INVALID_ENT_REFERENCE;
 	float origin[3], angles[3];
 
-	while((spawn = FindEntityByClassname(spawn, "info_player_fof")) != INVALID_ENT_REFERENCE)
+	while ((spawn = FindEntityByClassname(spawn, "info_player_fof")) != INVALID_ENT_REFERENCE)
 	{
 		Entity_GetAbsOrigin(spawn, origin);
 		Entity_GetAbsAngles(spawn, angles);
@@ -774,17 +803,17 @@ public void OnMapStart()
 	if (!isEnabled()) return;
 	
 	char tmp[PLATFORM_MAX_PATH];
-	
-	GameLive = false;
-	ClearJuggernauts();
-	//precache gamemode materials
+	InGrace = true;
+
+	// precache gamemode materials
 	g_VigilanteModelIndex = PrecacheModel("models/playermodels/player1.mdl");
 	g_BandidoModelIndex = PrecacheModel("models/playermodels/bandito.mdl");
 	g_BeamSprite = PrecacheModel("sprites/laser.vmt");
 	g_HaloSprite = PrecacheModel("sprites/halo01.vmt");
-	
 	PrecacheSound("common/buy_tick", true);
-	
+
+	ClearJuggernauts();
+
 	for (int i = 1; i <= 7; i++)
 	{
 		Format(tmp, sizeof(tmp), "npc/mexican/andale-0%i", i);
@@ -796,36 +825,9 @@ public void OnMapStart()
 	g_AutoSetGameDescription = true;
 }
 
-Action Timer_Repeat(Handle timer)
-{
-	if (!isEnabled()) return Plugin_Continue;
-	if (g_AutoSetGameDescription)
-	{
-		SetGameDescription("Juggernaut");
-		g_AutoSetGameDescription = false;
-	}
-	RoundEndCheck();
-	if (Team_GetClientCount(TEAM_JUGGERNAUT, CLIENTFILTER_ALIVE) > 1)
-	{
-		for (new i = 1; i <= MaxClients; i++)
-		{
-			if (IsClientInGame(i) && GetClientTeam(i) == TEAM_JUGGERNAUT)
-			{
-				if (GetClientUserId(i) != CurrentJuggernautId)
-				{
-					ChangeClientTeam(i, TEAM_HUMAN);
-				}
-			}
-		}
-	}
-	
-	return Plugin_Handled;
-}
-
 public void RoundEndCheck() // sometimes the teamplay entity won't end the round, so this manual check is needed
 {
-	if (!isEnabled()) return;
-	if (GetClientCount(false) < 2) return;
+	if (!isEnabled() || GetClientCount(false) < 2) return;
 	if (Team_GetClientCount(TEAM_HUMAN, CLIENTFILTER_ALIVE) == 0)
 	{
 		AcceptEntityInput(g_TeamplayEntity, INPUT_JUGGERNAUT_VICTORY);
@@ -833,49 +835,9 @@ public void RoundEndCheck() // sometimes the teamplay entity won't end the round
 	else if (Team_GetClientCount(TEAM_JUGGERNAUT, CLIENTFILTER_ALIVE) == 0)
 	{
 		AcceptEntityInput(g_TeamplayEntity, INPUT_HUMAN_VICTORY);
+		
 	}
 	return;
-}
-
-
-Action SoundReplace(int clients[MAXPLAYERS], int &numClients, char sample[PLATFORM_MAX_PATH], int &entity, int &channel, float &volume, int &level, int &pitch, int &flags, char soundEntry[PLATFORM_MAX_PATH], int &seed)
-{
-	if (!isEnabled) return Plugin_Handled;
-	if (0 < entity <= MaxClients)
-	{
-		if (isJuggernaut(entity))
-		{
-			if (StrContains(sample, "npc/mexican") != -1 || StrContains(sample, "player/voice") != -1)
-			{
-				Format(sample, sizeof(sample), "npc/mexican/andale-0%i.wav", GetRandomInt(1, 7));
-				return Plugin_Changed;
-			}
-		}
-	}
-	return Plugin_Continue;
-}
-
-Action Hook_OnWeaponCanUse(int client, int weapon)
-{
-	if (!isEnabled()) return Plugin_Continue;
-	
-	if (isJuggernaut(client))
-	{
-		char item[32];
-		GetEntityClassname(weapon, item, sizeof(item));
-		if (StrEqual(item, "weapon_whiskey"))
-		{
-			PrintToChat(client, "The juggernaut can't use whiskey!");
-			return Plugin_Handled;
-		}
-		// melee increases run speed/would not be the most fair as juggernaut
-		if (StrEqual(item, "weapon_axe") || StrEqual(item, "weapon_machete") || StrEqual(item, "weapon_knife"))
-		{
-			PrintToChat(client, "The juggernaut can't use melee weapons!");
-			return Plugin_Handled;
-		}
-	}
-	return Plugin_Continue;
 }
 
 public void OnClientPutInServer(int client)
@@ -887,63 +849,13 @@ public void OnClientPutInServer(int client)
 	SDKHook(client, SDKHook_PreThinkPost, Hook_PreThinkPost);
 }
 
-public Action:Hook_PreThinkPost(int client)
-{
-	if (!isEnabled()) return;
-	if (IsClientInGame(client) && isJuggernaut(client))
-    {
-		float slowdown = GetConVarFloat(g_JuggernautSpeed);
-		float interval = (235.0 - slowdown) / 75
-		if (GetClientHealth(client) < 100 && GetConVarBool(g_JuggernautRage))
-		{
-			slowdown = slowdown + interval * (100 - GetClientHealth(client));
-			if (GetClientHealth(client) <= 25)
-			{
-				slowdown = 235.0
-			}
-		}
-		SetEntPropFloat(client, Prop_Data, "m_flMaxspeed", slowdown);
-    }
-}
-
-public Action:Hook_OnTakeDamage(victim, &attacker, &inflictor, &Float:damage, &damagetype)
-{
-	if (isEnabled() && isJuggernaut(victim)) 
-	{
-		int players = GetClientCount(false);	
-		float ratio = 0.25
-		if (players > 1 && GetConVarBool(g_ScaleDamage) == true)
-		{
-			ratio = ratio - float(players) * 0.02
-			if (ratio <= 0.05)
-			{
-				ratio = 0.05
-			}
-		}
-		else if (GetConVarBool(g_ScaleDamage) != true)
-		{
-			ratio = GetConVarFloat(g_ScaleOverride);
-		}
-		
-		if (damagetype != (1 << 14)) // juggernauts take full damage from drowning (insta-kill water hazards)
-		{
-			damage = damage * ratio; 
-		}
-		return Plugin_Changed;
-	}
-	else
-	{
-		return Plugin_Continue;
-	}
-}
-
 public void OnConfigsExecuted()
 {
 	if (!isEnabled()) return;
 
-	SetGameDescription("Juggernaut");
 	g_TeambalanceAllowedCvar.SetInt(0, false, false);
 	g_TeamsUnbalanceLimitCvar.SetInt(0, false, false);
 	g_AutoteambalanceCvar.SetInt(0, false, false);
+	SetGameDescription("Juggernaut");
 	InitializeJuggernautMode();
 }
